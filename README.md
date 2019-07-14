@@ -22,3 +22,7 @@ middleware.DefaultLogger = middleware.GetDefaultRequestLogger(
 
 r.Use(middleware.Logger)
 ```
+
+## License
+
+MIT (The same as Chi's license).

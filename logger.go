@@ -3,6 +3,8 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"gopkg.in/natefinch/lumberjack.v2"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -13,9 +15,18 @@ import (
 
 func getRequestLogger() func(next http.Handler) http.Handler {
 	logFlags := 0
+	logger := log.New(os.Stdout, "", logFlags)
+	logger.SetOutput(io.MultiWriter(os.Stdout, &lumberjack.Logger{
+		Filename:   "/var/log/simpletutorials/log.log",
+		MaxSize:    500, // megabytes
+		MaxBackups: 10,
+		MaxAge:     1,    //days
+		Compress:   true, // disabled by default
+	}))
+
 	return RequestLogger(
 		&DefaultLogFormatter{
-			Logger:  log.New(os.Stdout, "", logFlags),
+			Logger:  logger,
 			NoColor: false,
 		},
 	)
@@ -53,7 +64,9 @@ func RequestLogger(f LogFormatter) func(next http.Handler) http.Handler {
 			// t1 := time.Now()
 			defer func() {
 				entry.WriteNoColor(strconv.Itoa(ww.Status()) + " ")
-				entry.WriteNoColor(strconv.Itoa(ww.BytesWritten()))
+				entry.WriteNoColor(strconv.Itoa(ww.BytesWritten()) + " ")
+				entry.WriteNoColor("\"" + r.Referer() + "\" ")
+				entry.WriteNoColor("\"" + r.UserAgent() + "\"")
 				// entry.Write(ww.Status(), ww.BytesWritten(), time.Since(t1))
 			}()
 

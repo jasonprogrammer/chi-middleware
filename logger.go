@@ -13,11 +13,12 @@ import (
 	"time"
 )
 
-func getRequestLogger() func(next http.Handler) http.Handler {
+// GetDefaultRequestLogger creates and returns a default logger
+func GetDefaultRequestLogger(logPath string) func(next http.Handler) http.Handler {
 	logFlags := 0
 	logger := log.New(os.Stdout, "", logFlags)
 	logger.SetOutput(io.MultiWriter(os.Stdout, &lumberjack.Logger{
-		Filename:   "/var/log/access.log",
+		Filename:   logPath,
 		MaxSize:    500, // megabytes
 		MaxBackups: 10,
 		MaxAge:     1,    //days
@@ -39,7 +40,7 @@ var (
 	// DefaultLogger is called by the Logger middleware handler to log each request.
 	// Its made a package-level variable so that it can be reconfigured for custom
 	// logging configurations.
-	DefaultLogger = getRequestLogger()
+	DefaultLogger = GetDefaultRequestLogger("/var/log/access.log")
 )
 
 // Logger is a middleware that logs the start and end of each request, along

@@ -17,7 +17,7 @@ func getRequestLogger() func(next http.Handler) http.Handler {
 	logFlags := 0
 	logger := log.New(os.Stdout, "", logFlags)
 	logger.SetOutput(io.MultiWriter(os.Stdout, &lumberjack.Logger{
-		Filename:   "/var/log/simpletutorials/log.log",
+		Filename:   "/var/log/access.log",
 		MaxSize:    500, // megabytes
 		MaxBackups: 10,
 		MaxAge:     1,    //days
@@ -63,10 +63,11 @@ func RequestLogger(f LogFormatter) func(next http.Handler) http.Handler {
 
 			// t1 := time.Now()
 			defer func() {
-				entry.WriteNoColor(strconv.Itoa(ww.Status()) + " ")
-				entry.WriteNoColor(strconv.Itoa(ww.BytesWritten()) + " ")
-				entry.WriteNoColor("\"" + r.Referer() + "\" ")
-				entry.WriteNoColor("\"" + r.UserAgent() + "\"")
+				output := strconv.Itoa(ww.Status()) + " " +
+					strconv.Itoa(ww.BytesWritten()) + " " +
+					"\"" + r.Referer() + "\" " +
+					"\"" + r.UserAgent() + "\""
+				entry.WriteNoColor(output)
 				// entry.Write(ww.Status(), ww.BytesWritten(), time.Since(t1))
 			}()
 

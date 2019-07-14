@@ -4,10 +4,22 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
+
+func getRequestLogger() func(next http.Handler) http.Handler {
+	logFlags := 0
+	return RequestLogger(
+		&DefaultLogFormatter{
+			Logger:  log.New(os.Stdout, "", logFlags),
+			NoColor: false,
+		},
+	)
+}
 
 var (
 	// LogEntryCtxKey is the context.Context key to store the request log entry.
@@ -16,7 +28,7 @@ var (
 	// DefaultLogger is called by the Logger middleware handler to log each request.
 	// Its made a package-level variable so that it can be reconfigured for custom
 	// logging configurations.
-	DefaultLogger = RequestLogger(&DefaultLogFormatter{Logger: log.New(os.Stdout, "", log.LstdFlags), NoColor: false})
+	DefaultLogger = getRequestLogger()
 )
 
 // Logger is a middleware that logs the start and end of each request, along
@@ -38,9 +50,11 @@ func RequestLogger(f LogFormatter) func(next http.Handler) http.Handler {
 			entry := f.NewLogEntry(r)
 			ww := NewWrapResponseWriter(w, r.ProtoMajor)
 
-			t1 := time.Now()
+			// t1 := time.Now()
 			defer func() {
-				entry.Write(ww.Status(), ww.BytesWritten(), time.Since(t1))
+				entry.WriteNoColor(strconv.Itoa(ww.Status()) + " ")
+				entry.WriteNoColor(strconv.Itoa(ww.BytesWritten()))
+				// entry.Write(ww.Status(), ww.BytesWritten(), time.Since(t1))
 			}()
 
 			next.ServeHTTP(ww, WithLogEntry(r, entry))
@@ -58,6 +72,7 @@ type LogFormatter interface {
 // LogEntry records the final log when a request completes.
 // See defaultLogEntry for an example implementation.
 type LogEntry interface {
+	WriteNoColor(output string)
 	Write(status, bytes int, elapsed time.Duration)
 	Panic(v interface{}, stack []byte)
 }
@@ -86,6 +101,36 @@ type DefaultLogFormatter struct {
 }
 
 // NewLogEntry creates a new LogEntry for the request.
+// func (l *DefaultLogFormatter) NewLogEntry(r *http.Request) LogEntry {
+// 	useColor := !l.NoColor
+// 	entry := &defaultLogEntry{
+// 		DefaultLogFormatter: l,
+// 		request:             r,
+// 		buf:                 &bytes.Buffer{},
+// 		useColor:            useColor,
+// 	}
+//
+// 	reqID := GetReqID(r.Context())
+// 	if reqID != "" {
+// 		cW(entry.buf, useColor, nYellow, "[%s] ", reqID)
+// 	}
+// 	cW(entry.buf, useColor, nCyan, "\"")
+// 	cW(entry.buf, useColor, bMagenta, "%s ", r.Method)
+//
+// 	scheme := "http"
+// 	if r.TLS != nil {
+// 		scheme = "https"
+// 	}
+// 	cW(entry.buf, useColor, nCyan, "%s://%s%s %s\" ", scheme, r.Host, r.RequestURI, r.Proto)
+//
+// 	entry.buf.WriteString("from ")
+// 	entry.buf.WriteString(r.RemoteAddr)
+// 	entry.buf.WriteString(" - ")
+//
+// 	return entry
+// }
+
+// NewLogEntry creates a new LogEntry for the request.
 func (l *DefaultLogFormatter) NewLogEntry(r *http.Request) LogEntry {
 	useColor := !l.NoColor
 	entry := &defaultLogEntry{
@@ -95,23 +140,23 @@ func (l *DefaultLogFormatter) NewLogEntry(r *http.Request) LogEntry {
 		useColor:            useColor,
 	}
 
-	reqID := GetReqID(r.Context())
-	if reqID != "" {
-		cW(entry.buf, useColor, nYellow, "[%s] ", reqID)
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = "-"
 	}
-	cW(entry.buf, useColor, nCyan, "\"")
-	cW(entry.buf, useColor, bMagenta, "%s ", r.Method)
-
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	if net.ParseIP(ip) == nil {
+		ip = "-"
 	}
-	cW(entry.buf, useColor, nCyan, "%s://%s%s %s\" ", scheme, r.Host, r.RequestURI, r.Proto)
 
-	entry.buf.WriteString("from ")
-	entry.buf.WriteString(r.RemoteAddr)
-	entry.buf.WriteString(" - ")
-
+	entry.buf.WriteString(ip + " ")
+	entry.buf.WriteString("- ") //Identity of client
+	entry.buf.WriteString("- ") //Username of user accessing document
+	entry.buf.WriteString(
+		"[" + time.Now().Format("02/Jan/2006:15:04:05 -0700") + "] ",
+	)
+	entry.buf.WriteString(
+		"\"" + r.Method + " " + r.RequestURI + " " + r.Proto + "\" ",
+	)
 	return entry
 }
 
@@ -120,6 +165,11 @@ type defaultLogEntry struct {
 	request  *http.Request
 	buf      *bytes.Buffer
 	useColor bool
+}
+
+func (l *defaultLogEntry) WriteNoColor(output string) {
+	l.buf.Write([]byte(output))
+	l.Logger.Print(l.buf.String())
 }
 
 func (l *defaultLogEntry) Write(status, bytes int, elapsed time.Duration) {
